@@ -17,7 +17,7 @@ class WallFollower:
     VELOCITY = rospy.get_param("wall_follower/velocity")
     DESIRED_DISTANCE = rospy.get_param("wall_follower/desired_distance")
     ANGLE_VELOCITY_WEIGHT = 0.8
-    MIN_DISTANCE_TO_WALL = 1.5
+    MIN_DISTANCE_TO_WALL = 0.75
     MIN_VELOCITY = 0.1
 
     def __init__(self):
@@ -35,6 +35,7 @@ class WallFollower:
 	angle_increment = laser_scan_data.angle_increment
 
 	ranges = np.array(laser_scan_data.ranges)
+	ranges = np.nan_to_num(ranges)
 	angles = np.arange(laser_scan_data.angle_min, laser_scan_data.angle_max, laser_scan_data.angle_increment)
 
 	NUMBER_PRIMITIVES = 11
