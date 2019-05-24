@@ -17,7 +17,7 @@ class WallFollower:
     VELOCITY = rospy.get_param("wall_follower/velocity")
     DESIRED_DISTANCE = rospy.get_param("wall_follower/desired_distance")
     ANGLE_VELOCITY_WEIGHT = 0.8
-    MIN_DISTANCE_TO_WALL = 0.75
+    MIN_DISTANCE_TO_WALL = 0.5
     MIN_VELOCITY = 0.1
 
     def __init__(self):
@@ -38,18 +38,25 @@ class WallFollower:
 	ranges = np.nan_to_num(ranges)
 	angles = np.arange(laser_scan_data.angle_min, laser_scan_data.angle_max, laser_scan_data.angle_increment)
 
+
 	NUMBER_PRIMITIVES = 11
 	NUMBER_MEASUREMENTS_PER_RANGE = len(ranges) / NUMBER_PRIMITIVES
+	mu, sigma = 0.0, 1.0
+	angle_score = 1/(sigma * np.sqrt(2 * np.pi)) * np.exp( - (angles - mu)**2 / (2 * sigma**2) )
+	angle_score = np.clip(whatever, 0.2, 1.0)
 
 	desires = [] # (desire, angle, speed)
 	for primitive in range(1,NUMBER_PRIMITIVES-1):
 		ranges_area = ranges[NUMBER_MEASUREMENTS_PER_RANGE*(primitive-1):NUMBER_MEASUREMENTS_PER_RANGE*(primitive+2)]
 		angles_area = angles[NUMBER_MEASUREMENTS_PER_RANGE*(primitive-1):NUMBER_MEASUREMENTS_PER_RANGE*(primitive+2)]
+		angles_scores = angle_score[NUMBER_MEASUREMENTS_PER_RANGE*(primitive-1):NUMBER_MEASUREMENTS_PER_RANGE*(primitive+2)]
+
 		danger_min = ranges_area.min()
 		if danger_min > self.MIN_DISTANCE_TO_WALL:
 			angles_mean = angles_area.mean()
-			desire = danger_min - abs(angles_mean)
-			print("Area", primitive, danger_min, angles_mean, desire)
+			angles_scores_mean = angles_scores.mean()
+			desire = danger_min - abs(angles_scores_mean)
+			print("Area", primitive, danger_min, angles_scores_mean, desire)
 			desires.append((desire, angles_mean, self.VELOCITY - self.ANGLE_VELOCITY_WEIGHT*angles_mean))
 
 
