@@ -16,50 +16,77 @@ class WallFollower:
     SIDE = rospy.get_param("wall_follower/side")
     VELOCITY = rospy.get_param("wall_follower/velocity")
     DESIRED_DISTANCE = rospy.get_param("wall_follower/desired_distance")
+    ANGLE_VELOCITY_WEIGHT = 0.8
+    MIN_DISTANCE_TO_WALL = 1.5
+    MIN_VELOCITY = 0.1
 
     def __init__(self):
-        # TODO:
-        # Initialize your publishers and
-        # subscribers here
-        print("working init")
  	self.control_pub = rospy.Publisher(self.DRIVE_TOPIC, AckermannDriveStamped, queue_size=1)
         self.control_rate = rospy.Rate(20)
         
-        #init subscriber
         rospy.Subscriber(self.SCAN_TOPIC, LaserScan, self.scan_callback)
         self.control_action = None
         self.lines = None
         self.control_mode = 'ackermann'
   
     def scan_callback(self,laser_scan_data):
-        #process data to obtain line to follow
-        print("Got a scan")
-        print(laser_scan_data)
 	min_angle = laser_scan_data.angle_min
 	max_angle = laser_scan_data.angle_max
 	angle_increment = laser_scan_data.angle_increment
 
 	ranges = np.array(laser_scan_data.ranges)
-	front_ranges = ranges[40:60]
-	print("Num ranges: " + str(len(ranges)))
-	print("Expected: ", (max_angle-min_angle)/angle_increment, min_angle, max_angle, angle_increment)
-	min_distance = front_ranges.min()
-	print(min_distance)
+	angles = np.arange(laser_scan_data.angle_min, laser_scan_data.angle_max, laser_scan_data.angle_increment)
+
+	NUMBER_PRIMITIVES = 11
+	NUMBER_MEASUREMENTS_PER_RANGE = len(ranges) / NUMBER_PRIMITIVES
+
+	desires = [] # (desire, angle, speed)
+	for primitive in range(1,NUMBER_PRIMITIVES-1):
+		ranges_area = ranges[NUMBER_MEASUREMENTS_PER_RANGE*(primitive-1):NUMBER_MEASUREMENTS_PER_RANGE*(primitive+2)]
+		angles_area = angles[NUMBER_MEASUREMENTS_PER_RANGE*(primitive-1):NUMBER_MEASUREMENTS_PER_RANGE*(primitive+2)]
+		danger_min = ranges_area.min()
+		if danger_min > self.MIN_DISTANCE_TO_WALL:
+			angles_mean = angles_area.mean()
+			desire = danger_min - abs(angles_mean)
+			print("Area", primitive, danger_min, angles_mean, desire)
+			desires.append((desire, angles_mean, self.VELOCITY - self.ANGLE_VELOCITY_WEIGHT*angles_mean))
+
+
+	desires.sort(reverse=True)
+
+	control_action = AckermannDriveStamped()
+        control_action.header.stamp = rospy.rostime.Time().now()
+        
+	if len(desires) > 0:
+		print("Best desire: " , desires[0])
+		control_action.drive.speed = max(desires[0][2], self.MIN_VELOCITY)
+		control_action.drive.steering_angle = desires[0][1]
+        else:
+		control_action.drive.speed = self.MIN_VELOCITY
+		control_action.drive.steering_angle = 1.0
+
+        self.control_pub.publish(control_action)
+
+	#front_ranges = ranges[40:60]
+	#print("Num ranges: " + str(len(ranges)))
+	#print("Expected: ", (max_angle-min_angle)/angle_increment, min_angle, max_angle, angle_increment)
+	#min_distance = front_ranges.min()
+#	print(min_distance)
 #        self.lines= self.scan_to_lines(laser_scan_data)
 #        self.set_control()
-	control_action = AckermannDriveStamped()
+#	control_action = AckermannDriveStamped()
         #set header
-        control_action.header.stamp = rospy.rostime.Time().now()
+ #       control_action.header.stamp = rospy.rostime.Time().now()
             #fixed velocity and heading
 
 
-	if min_distance > 3.0:
-        	control_action.drive.speed = self.VELOCITY
-		control_action.drive.steering_angle = 0.0
-        else:
-		control_action.drive.speed = self.VELOCITY / 4
-		control_action.drive.steering_angle = 1.0
-        self.control_pub.publish(control_action)
+#	if min_distance > 3.0:
+#        	control_action.drive.speed = self.VELOCITY
+#		control_action.drive.steering_angle = 0.0
+       # else#
+	#	control_action.drive.speed = self.VELOCITY / 4
+#		control_action.drive.steering_angle = 1.0
+      #  self.control_pub.publish(control_action)
 
 #        self.lines = None
         #self.publish_lines(self.lines, color = [0,0,1])
